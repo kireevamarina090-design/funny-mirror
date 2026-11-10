@@ -422,29 +422,25 @@ async function aiRender() {
   }
 }
 
-/* 🎲 лицо придумывает ИИ (без ключей; flux → gptimage) */
+/* 🎲 лицо придумывает ИИ (без ключей; надёжный gptimage) */
 faceBtn.addEventListener("click", async () => {
   if (aiBusy) return;
   stageNote.textContent = "🎲 ИИ придумывает лицо…";
   try {
     const seed = Math.floor(Math.random() * 1e6);
     const p = "casual candid smartphone selfie photo of a young person, natural daylight, sharp focus, vertical composition, realistic";
-    const urls = [
-      "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?model=flux&width=768&height=1024&nologo=true&seed=" + seed,
-      "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?model=gptimage&width=768&height=1024&nologo=true&seed=" + seed,
-    ];
+    const u = "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) +
+      "?model=gptimage&width=768&height=1024&nologo=true&seed=" + seed;
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 80000);
     let blob = null;
-    for (const u of urls) {
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 75000);
-      try {
-        const r = await fetch(u, { signal: ctl.signal, cache: "no-store" });
-        const b = await r.blob();
-        if (r.ok && /^image\//.test(b.type)) { blob = b; break; }
-      } catch (e) { console.warn("faceModel", e); }
-      finally { clearTimeout(t); }
-    }
-    if (!blob) throw new Error("У бесплатного ИИ сейчас лимит — попробуйте через несколько минут или загрузите своё фото");
+    try {
+      const r = await fetch(u, { signal: ctl.signal, cache: "no-store" });
+      const b = await r.blob();
+      if (r.ok && /^image\//.test(b.type)) blob = b;
+      else if (r.status === 402) throw new Error("У бесплатного ИИ сейчас лимит — подождите пару минут или загрузите своё фото");
+      else throw new Error("ИИ-картинка не получилась (HTTP " + r.status + ") — попробуйте ещё раз");
+    } finally { clearTimeout(t); }
     await loadFromDataURL(await blobToDataURL(blob));
     toast("ИИ придумал новое лицо 🎭");
   } catch (e) {
