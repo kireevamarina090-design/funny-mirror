@@ -803,3 +803,23 @@ function renderFunnyPic(src, anchors, theme, intensity) {
 
   return { canvas: out, ms: performance.now() - t0 };
 }
+
+/* ------------------------------------------------------------
+   ИИ-промпты тем (img2img): как ИИ должен «нарисовать» тему
+   ------------------------------------------------------------ */
+const AI_PROMPTS = {
+  mirror: "turn into a carnival house-of-mirrors photo: fisheye bulge, huge wide eyes, stretched tall forehead, wavy melted middle of the face, tiny pinched mouth",
+  piggy: "make the person look like an adorable cartoon piglet: round pink pig snout over the nose, floppy pink pig ears, chubby rosy cheeks, glossy eyes",
+  brain: "comically enlarge the forehead into a giant smooth brain-like balloon head, tiny chin, teasing professor look",
+  clown: "make the person a joyful circus clown: white face base paint, big red foam nose, rainbow curly wig, painted huge red smile, hearts on cheeks",
+  alien: "turn into the classic grey alien: oversized oval bald head, huge black almond-shaped glossy eyes, tiny nose holes, pale grey-green smooth skin",
+  wizard: "make the person a jolly wizard: tall red-and-white santa hat, giant fluffy white beard covering chin and cheeks, round friendly nose",
+  zombie: "make the person a goofy hollywood zombie: pale green cracked skin, droopy mismatched eyes, stitches on cheek, funny — not scary, silly horror-comedy vibe",
+  chubs: "give extremely chubby puffy hamster-stuffing cheeks, tiny squinted happy eyes, round puffed face shape",
+  puppy: "make the person an adorable puppy-human: big glossy brown puppy eyes, floppy golden dog ears, small black dog nose, gentle happy look",
+  tiny: "shrink the face into a tiny scrunched mini-face in the center of the head, huge empty forehead and hair around it, comical proportions",
+  elder: "make the person a wise funny elder man: deep laugh wrinkles, bushy grey eyebrows, big grey walrus mustache, bald top with grey side hair",
+  baby: "make the person a chubby adorable baby: giant sparkling eyes, tiny pouty lips, one little hair curl on top, baby-soft rosy skin",
+  hamster: "make the person a cute hamster-faced friend: huge stuffed round cheeks, round button eyes, tiny nose, big buck teeth",
+  tadpole: "turn into a funny frog-tadpole guy: big round goldish eyes bulging on top, wide thin smile, pinched huge frog chin, fresh green tint on skin",
+};
