@@ -30,6 +30,12 @@ const state = {
 const showEl = el => { el.hidden = false; };
 const hideEl = el => { el.hidden = true; };
 
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
 function toast(msg, kind = "") {
   const t = document.createElement("div");
   t.className = `toast ${kind}`;
@@ -68,7 +74,7 @@ function buildThemes() {
 function selectTheme(t, { quiet = false } = {}) {
   state.theme = t;
   for (const th of THEMES) th._btn.classList.toggle("is-active", th === t);
-  if (state.img) scheduleRender();
+  if (state.img) updateRender();
   if (!quiet) stageNote.textContent = `Вы выбрали: ${t.emoji} ${t.name}`;
 }
 
@@ -108,7 +114,7 @@ async function loadFromDataURL(dataURL) {
 
     // рендерим сразу (в резервном режиме), лицо детектится ниже
     state.face = null;
-    scheduleRender();
+    updateRender();
 
     if (landmarker) {
       try {
@@ -116,7 +122,7 @@ async function loadFromDataURL(dataURL) {
         const lms = res && res.faceLandmarks && res.faceLandmarks[0];
         state.face = lms ? buildAnchors(lms, w, h) : null;
         if (!lms) toast("Лицо не нашлось — эффекты применились к центру кадра", "info");
-        scheduleRender();
+        updateRender();
       } catch (e) {
         console.warn("detect failed", e);
       }
@@ -154,7 +160,8 @@ window.addEventListener("paste", e => {
 /* ---------- рендер и сравнение ---------- */
 let pending = false;
 
-function scheduleRender() {
+function scheduleRender(force = false) {
+  if (aiMode && !force) return; // в ИИ-режиме рисует нейросеть, а не canvas
   if (!state.img || pending) return;
   pending = true;
   requestAnimationFrame(() => {
@@ -198,7 +205,8 @@ compareRange.addEventListener("input", () => setCompare(+compareRange.value));
 intensityInput.addEventListener("input", () => {
   state.intensity = +intensityInput.value;
   intensityOut.textContent = Math.round(state.intensity * 100) + "%";
-  scheduleRender();
+  if (aiMode) { clearTimeout(aiDebT); aiDebT = setTimeout(aiRender, 1500); }
+  else scheduleRender();
 });
 
 randomBtn.addEventListener("click", () => {
@@ -223,6 +231,7 @@ resetBtn.addEventListener("click", () => {
   hideEl(compareRange);
   enableToggles(false);
   fileInput.value = "";
+  syncAiRows();
   stageNote.textContent = "";
   toast("Готов к новому фото ↺", "info");
 });
@@ -240,6 +249,225 @@ downloadBtn.addEventListener("click", () => {
   }, "image/png");
   toast(`Скачано: ${name} 💾`);
 });
+
+/* ============================================================
+   ИИ-генерация (img2img, бесплатно и без ключей)
+   Pollinations gptimage рисует эффект; своё фото уходит анонимно
+   на tmpfiles.org (~1 час) — без него gptimage требует публичный URL.
+   ============================================================ */
+for (const t of THEMES) t.ai = AI_PROMPTS[t.id] || "";
+
+const aiGenToggle = $("aiGenToggle"), aiRegen = $("aiRegen");
+const faceBtn = $("faceBtn"), urlBtn = $("urlBtn");
+const urlRow = $("urlRow"), urlInput = $("urlInput");
+
+let aiMode = store.get("fm_ai") !== "0"; // ИИ-режим по умолчанию вкл
+let aiSeed = Math.floor(Math.random() * 1e6);
+let aiBusy = false;
+let aiDebT = 0;
+let aiPrivacyToasted = false;
+
+function canvasToBlob(c) {
+  return new Promise((res, rej) =>
+    c.toBlob(b => (b ? res(b) : rej(new Error("toBlob null"))), "image/png"));
+}
+
+function blobToDataURL(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+
+function syncAiRows() {
+  aiGenToggle.checked = aiMode;
+  aiRegen.hidden = !(aiMode && state.img);
+}
+
+/* диспетчер: ИИ-канвас или мгновенный canvas */
+function updateRender() {
+  if (aiMode) { clearTimeout(aiDebT); aiDebT = setTimeout(aiRender, 900); }
+  else scheduleRender();
+}
+
+function setAiMode(on, { quiet = false } = {}) {
+  aiMode = on;
+  store.set("fm_ai", on ? "1" : "0");
+  syncAiRows();
+  if (on && !quiet && !aiPrivacyToasted) {
+    aiPrivacyToasted = true;
+    toast("✨ ИИ-режим: фото временно уходит в бесплатные сервисы tmpfiles.org и Pollinations", "info");
+  }
+  if (state.img) (on ? updateRender() : scheduleRender());
+}
+
+aiGenToggle.addEventListener("change", () => setAiMode(aiGenToggle.checked));
+
+aiRegen.addEventListener("click", () => {
+  aiSeed = Math.floor(Math.random() * 1e6);
+  aiRender();
+});
+
+const AI_SUFFIX =
+  ". Keep the same person, same pose and background. Single edited photorealistic photo, face clearly visible, no text, no watermark";
+
+function buildAiPrompt() {
+  const p = state.intensity;
+  const word = p < .45 ? "Subtle effect" : p < .95 ? "Strong effect" : "Extreme effect";
+  return `Edit this photo: ${state.theme.ai}. ${word}${AI_SUFFIX}`;
+}
+
+/* своё фото → анонимная публичная ссылка (tmpfiles.org, живёт ~1 час) */
+async function tmpfilesUpload(blob) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 40000);
+  try {
+    const fd = new FormData();
+    fd.append("file", blob, `funny-mirror-${Date.now()}.png`);
+    const r = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: fd, signal: ctl.signal });
+    if (!r.ok) throw new Error("tmpfiles HTTP " + r.status);
+    const j = await r.json();
+    const url = j && j.data && j.data.url;
+    if (!url || !/^https:\/\/tmpfiles\.org\//.test(url)) throw new Error("tmpfiles: нет ссылки");
+    return url.replace("tmpfiles.org/", "tmpfiles.org/dl/"); // прямая ссылка на файл
+  } finally { clearTimeout(t); }
+}
+
+/* Pollinations gptimage —(img2img); анонимно, 2 попытки */
+async function gptImageEdit(imgUrl, prompt, seed, w, h) {
+  const api = "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) +
+    "?model=gptimage&image=" + encodeURIComponent(imgUrl) +
+    "&width=" + w + "&height=" + h + "&nologo=true&seed=" + seed;
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 90000);
+    try {
+      const r = await fetch(api, { signal: ctl.signal, cache: "no-store" });
+      if (!r.ok) {
+        await r.text().catch(() => "");
+        throw new Error("HTTP " + r.status + (r.status === 402 ? " (лимит бесплатного тира)" : ""));
+      }
+      const blob = await r.blob();
+      if (!/^image\//.test(blob.type)) throw new Error("пришло не изображение: " + blob.type);
+      return blob;
+    } catch (e) { lastErr = e; console.warn("gptImage", attempt + 1, e); }
+    finally { clearTimeout(t); }
+    if (attempt === 0) await new Promise(res => setTimeout(res, 2500));
+  }
+  throw lastErr || new Error("ИИ-картинка не получена");
+}
+
+function aiTargetSize() {
+  const MAXAI = 1024;
+  const w = state.img.width, h = state.img.height;
+  const s = Math.min(1, MAXAI / Math.max(w, h));
+  return {
+    w: Math.max(256, Math.round(w * s / 64) * 64),
+    h: Math.max(256, Math.round(h * s / 64) * 64),
+  };
+}
+
+async function aiRender() {
+  if (!state.img || aiBusy) return;
+  aiBusy = true;
+  aiRegen.disabled = true;
+  downloadBtn.disabled = true;
+  const t0 = performance.now();
+  stageNote.textContent = `✨ ИИ рисует «${state.theme.name}»… обычно 10–40 с`;
+  try {
+    if (navigator.onLine === false) throw new Error("офлайн: нет интернета");
+    const blob = await canvasToBlob(state.img);
+    const pub = await tmpfilesUpload(blob);
+    const { w, h } = aiTargetSize();
+    const got = await gptImageEdit(pub, buildAiPrompt(), aiSeed, w, h);
+    if (!state.img) throw new Error("фото успели сбросить");
+    const bmp = await createImageBitmap(got);
+    const c = newCanvas(bmp.width, bmp.height);
+    c.getContext("2d").drawImage(bmp, 0, 0);
+
+    resultCanvas.width = c.width;
+    resultCanvas.height = c.height;
+    resultCanvas.getContext("2d").drawImage(c, 0, 0);
+    resultCanvas.classList.add("show");
+    beforeCanvas.width = c.width;
+    beforeCanvas.height = c.height;
+    beforeCanvas.getContext("2d").drawImage(state.orig, 0, 0);
+    hideEl(emptyState);
+    showEl(compareWrap);
+    showEl(compareRange);
+    setCompare(100);
+    downloadBtn.disabled = false;
+    aiRegen.disabled = false;
+
+    state.result = c;
+    stageNote.textContent =
+      `✨ ${state.theme.emoji} ${state.theme.name} — нарисовано ИИ · ${c.width}×${c.height} · ${((performance.now() - t0) / 1000).toFixed(1)} с`;
+  } catch (e) {
+    console.warn("aiRender", e);
+    aiRegen.disabled = false;
+    downloadBtn.disabled = !state.img ? true : downloadBtn.disabled;
+    if (state.img) {
+      toast(e.message && e.message.startsWith("офлайн")
+        ? "Нет интернета — показываю быстрый canvas-эффект 💨"
+        : "ИИ не смог нарисовать — показываю быстрый canvas-эффект 💨", "err");
+      scheduleRender(true); // аварийный локальный вариант
+    }
+  } finally {
+    aiBusy = false;
+  }
+}
+
+/* 🎲 лицо придумывает ИИ (flux, без ключей) */
+faceBtn.addEventListener("click", async () => {
+  if (aiBusy) return;
+  stageNote.textContent = "🎲 ИИ придумывает лицо…";
+  try {
+    const seed = Math.floor(Math.random() * 1e6);
+    const r = await fetch("https://image.pollinations.ai/prompt/" + encodeURIComponent(
+      "casual candid smartphone selfie photo of a young person, natural daylight, sharp focus, vertical composition, realistic"
+    ) + "?width=768&height=1024&model=flux&nologo=true&seed=" + seed, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    await loadFromDataURL(await blobToDataURL(await r.blob()));
+    toast("ИИ придумал новое лицо 🎭");
+  } catch (e) {
+    console.warn("faceBtn", e);
+    toast("Не получилось придумать лицо — нет связи с ИИ", "err");
+    stageNote.textContent = "";
+  }
+});
+
+/* 🔗 фото по ссылке (через weserv-прокси, он же кроп под лицо) */
+urlBtn.addEventListener("click", () => {
+  urlRow.hidden ? showEl(urlRow) : hideEl(urlRow);
+  if (!urlRow.hidden) urlInput.focus();
+});
+
+urlRow.addEventListener("submit", async e => {
+  e.preventDefault();
+  const u = urlInput.value.trim();
+  if (!/^https?:\/\//i.test(u)) { toast("Нужна ссылка, начинающаяся с http(s)://", "err"); return; }
+  stageNote.textContent = "🔗 Тянем картинку по ссылке…";
+  try {
+    const noScheme = u.replace(/^https?:\/\//i, "");
+    const prox = "https://images.weserv.nl/?url=" + encodeURIComponent(noScheme) +
+      "&w=1280&h=1600&fit=cover&a=face&output=jpg";
+    const r = await fetch(prox, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    await loadFromDataURL(await blobToDataURL(await r.blob()));
+    toast("Фото по ссылке загружено 🔗");
+    hideEl(urlRow);
+  } catch (e2) {
+    console.warn("urlRow", e2);
+    toast("По этой ссылке не вытянулась картинка", "err");
+    stageNote.textContent = "";
+  }
+});
+
+/* init ИИ-блока */
+syncAiRows();
 
 /* ---------- MediaPipe Face Landmarker (CDN, опционально) ---------- */
 let landmarker = null;
@@ -340,12 +568,6 @@ const aiModel = $("aiModel"), aiForget = $("aiForget"), aiSetup = $("aiSetup");
 const chatMode = $("chatMode");
 
 const pickFrom = arr => arr[Math.floor(Math.random() * arr.length)];
-
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
-  del(k) { try { localStorage.removeItem(k); } catch {} },
-};
 
 const HISTORY_MAX = 10;
 const chatHistory = [];
