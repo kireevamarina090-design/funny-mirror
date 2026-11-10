@@ -422,7 +422,7 @@ async function aiRender() {
   }
 }
 
-/* 🎲 лицо придумывает ИИ (без ключей; надёжный gptimage) */
+/* 🎲 лицо придумывает ИИ (flux, без ключей; у гптimages без источника зависает) */
 faceBtn.addEventListener("click", async () => {
   if (aiBusy) return;
   stageNote.textContent = "🎲 ИИ придумывает лицо…";
@@ -430,9 +430,9 @@ faceBtn.addEventListener("click", async () => {
     const seed = Math.floor(Math.random() * 1e6);
     const p = "casual candid smartphone selfie photo of a young person, natural daylight, sharp focus, vertical composition, realistic";
     const u = "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) +
-      "?model=gptimage&width=768&height=1024&nologo=true&seed=" + seed;
+      "?model=flux&width=768&height=1024&nologo=true&seed=" + seed;
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 80000);
+    const t = setTimeout(() => ctl.abort(), 45000);
     let blob = null;
     try {
       const r = await fetch(u, { signal: ctl.signal, cache: "no-store" });
