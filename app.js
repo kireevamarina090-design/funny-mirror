@@ -420,21 +420,34 @@ async function aiRender() {
   }
 }
 
-/* 🎲 лицо придумывает ИИ (flux, без ключей) */
+/* 🎲 лицо придумывает ИИ (без ключей; flux → gptimage) */
 faceBtn.addEventListener("click", async () => {
   if (aiBusy) return;
   stageNote.textContent = "🎲 ИИ придумывает лицо…";
   try {
     const seed = Math.floor(Math.random() * 1e6);
-    const r = await fetch("https://image.pollinations.ai/prompt/" + encodeURIComponent(
-      "casual candid smartphone selfie photo of a young person, natural daylight, sharp focus, vertical composition, realistic"
-    ) + "?width=768&height=1024&model=flux&nologo=true&seed=" + seed, { cache: "no-store" });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    await loadFromDataURL(await blobToDataURL(await r.blob()));
+    const p = "casual candid smartphone selfie photo of a young person, natural daylight, sharp focus, vertical composition, realistic";
+    const urls = [
+      "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?model=flux&width=768&height=1024&nologo=true&seed=" + seed,
+      "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?model=gptimage&width=768&height=1024&nologo=true&seed=" + seed,
+    ];
+    let blob = null;
+    for (const u of urls) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 75000);
+      try {
+        const r = await fetch(u, { signal: ctl.signal, cache: "no-store" });
+        const b = await r.blob();
+        if (r.ok && /^image\//.test(b.type)) { blob = b; break; }
+      } catch (e) { console.warn("faceModel", e); }
+      finally { clearTimeout(t); }
+    }
+    if (!blob) throw new Error("У бесплатного ИИ сейчас лимит — попробуйте через несколько минут или загрузите своё фото");
+    await loadFromDataURL(await blobToDataURL(blob));
     toast("ИИ придумал новое лицо 🎭");
   } catch (e) {
     console.warn("faceBtn", e);
-    toast("Не получилось придумать лицо — нет связи с ИИ", "err");
+    toast(e.message || "Не получилось придумать лицо", "err");
     stageNote.textContent = "";
   }
 });
