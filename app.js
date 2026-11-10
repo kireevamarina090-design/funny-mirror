@@ -264,6 +264,7 @@ const urlRow = $("urlRow"), urlInput = $("urlInput");
 let aiMode = store.get("fm_ai") !== "0"; // ИИ-режим по умолчанию вкл
 let aiSeed = Math.floor(Math.random() * 1e6);
 let aiBusy = false;
+let aiPending = false;
 let aiDebT = 0;
 let aiPrivacyToasted = false;
 
@@ -371,7 +372,7 @@ function aiTargetSize() {
 }
 
 async function aiRender() {
-  if (!state.img || aiBusy) return;
+  if (!state.img || aiBusy) { if (state.img) { aiPending = true; } return; } // дождёмся за занятым рендером
   aiBusy = true;
   aiRegen.disabled = true;
   downloadBtn.disabled = true;
@@ -417,6 +418,7 @@ async function aiRender() {
     }
   } finally {
     aiBusy = false;
+    if (aiPending && state.img) { aiPending = false; setTimeout(aiRender, 800); }
   }
 }
 
