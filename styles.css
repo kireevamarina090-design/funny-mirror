@@ -711,3 +711,48 @@ input[type="range"]::-moz-range-thumb {
 .chat-input input:focus { border-color: rgba(124, 92, 255, .6); }
 
 .chat-input .btn { padding: 10px 14px; }
+
+/* ---------- источники фото + ИИ-генерация ---------- */
+.src-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.src-row .btn { padding: 9px 6px; font-size: 12.5px; }
+
+.url-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.url-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, .06);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: 12.5px/1.3 inherit;
+  outline: none;
+}
+
+.url-row input:focus { border-color: rgba(124, 92, 255, .6); }
+.url-row .btn { padding: 8px 12px; }
+
+.ai-gen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(124, 92, 255, .45);
+  border-radius: 14px;
+  background: rgba(124, 92, 255, .06);
+}
+
+.ai-gen .hint { margin: 0; font-size: 11px; color: var(--muted); }
+.ai-gen .btn { align-self: flex-start; padding: 8px 12px; font-size: 12.5px; }
