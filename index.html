@@ -39,6 +39,14 @@
           <input id="fileInput" type="file" accept="image/*" hidden>
           <p class="hint">JPG · PNG · WEBP — фото не покидает ваш компьютер</p>
         </div>
+        <div class="src-row">
+          <button class="btn ghost" id="faceBtn" type="button" title="ИИ придумает лицо за вас">🎲 Лицо от ИИ</button>
+          <button class="btn ghost" id="urlBtn" type="button" title="Загрузить фото по ссылке">🔗 По ссылке</button>
+        </div>
+        <form id="urlRow" class="url-row" hidden>
+          <input id="urlInput" type="url" placeholder="https://… прямая ссылка на фото" autocomplete="off">
+          <button class="btn primary" type="submit" title="Загрузить">→</button>
+        </form>
       </section>
 
       <section class="panel-block">
@@ -47,6 +55,14 @@
         <div class="range-row">
           <label for="intensity">Сила смеха <output id="intensityOut">90%</output></label>
           <input type="range" id="intensity" min="0.2" max="1.5" step="0.05" value="0.9">
+        </div>
+        <div class="ai-gen">
+          <label class="switch-row">
+            <input type="checkbox" id="aiGenToggle">
+            <span>✨ Рисует ИИ (объёмно, вместо canvas-эффекта)</span>
+          </label>
+          <p class="hint">ИИ перерисовывает фото с эффектом темы (~10–40&nbsp;с). Включено — фото ненадолго уходит в бесплатные сервисы tmpfiles.org и Pollinations. Выключено — всё живёт только в браузере.</p>
+          <button class="btn ghost" id="aiRegen" type="button" hidden>🎲 Другой вариант ИИ</button>
         </div>
       </section>
 
@@ -86,7 +102,8 @@
 
   <footer class="foot">
     <p>🤪 Сделано исключительно для смеха: калечим только фотографии людей, которые в курсе шутки.
-      Лица находит MediaPipe Facial Landmarks, обработка идёт на вашем устройстве, ничто никуда не отправляется.</p>
+      Лица находит MediaPipe; обычный canvas-режим работает на вашем устройстве и ничего не отправляет.
+      Опциональный ИИ-режим передаёт фото в бесплатные сервисы tmpfiles.org и Pollinations.</p>
   </footer>
 
   <div class="chat" id="chatPanel" hidden>
